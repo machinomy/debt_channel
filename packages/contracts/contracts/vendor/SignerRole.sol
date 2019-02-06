@@ -1,6 +1,8 @@
 pragma solidity ^0.5.0;
 
-import "./Roles.sol";
+import "openzeppelin-solidity/contracts/access/Roles.sol";
+import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
+import "../Holding.sol";
 
 contract SignerRole {
     using Roles for Roles.Role;
@@ -10,8 +12,11 @@ contract SignerRole {
 
     Roles.Role private _signers;
 
-    constructor () internal {
-        _addSigner(msg.sender);
+    Holding parentContract;
+
+    constructor (Holding _parentContract) internal {
+        parentContract = _parentContract;
+        _signers.add(msg.sender);
     }
 
     modifier onlySigner() {
@@ -23,21 +28,27 @@ contract SignerRole {
         return _signers.has(account);
     }
 
-    function addSigner(address account) public onlySigner {
-        _addSigner(account);
+    function addSignerDigest (address _newSigner) public view returns (bytes32) {
+        return keccak256(abi.encode("as", address(parentContract), _newSigner));
     }
 
-    function renounceSigner() public {
-        _removeSigner(msg.sender);
+    function removeSignerDigest (address _signer) public view returns (bytes32) {
+        return keccak256(abi.encode("rs", address(parentContract), _signer));
     }
 
-    function _addSigner(address account) internal {
-        _signers.add(account);
-        emit SignerAdded(account);
+    function addSigner (address _newSigner, bytes memory _signature) public {
+        bytes32 digest = ECDSA.toEthSignedMessageHash(addSignerDigest(_newSigner));
+        address owner = ECDSA.recover(digest, _signature);
+        require(parentContract.isOwner(owner), "addSigner: Should be signed by one of owners");
+        _signers.add(_newSigner);
+        emit SignerAdded(_newSigner);
     }
 
-    function _removeSigner(address account) internal {
-        _signers.remove(account);
-        emit SignerRemoved(account);
+    function removeSigner (address _signer, bytes memory _signature) public {
+        bytes32 digest = ECDSA.toEthSignedMessageHash(removeSignerDigest(_signer));
+        address owner = ECDSA.recover(digest, _signature);
+        require(parentContract.isOwner(owner), "removeSigner: Should be signed by one of owners");
+        _signers.remove(_signer);
+        emit SignerRemoved(_signer);
     }
 }

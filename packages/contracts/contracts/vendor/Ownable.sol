@@ -1,72 +1,36 @@
 pragma solidity ^0.5.0;
 
+import "openzeppelin-solidity/contracts/access/Roles.sol";
+import "openzeppelin-solidity/contracts/access/roles/WhitelistAdminRole.sol";
+import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
+
 /**
  * @title Ownable
- * @dev The Ownable contract has an owner address, and provides basic authorization control
- * functions, this simplifies the implementation of "user permissions".
  */
-contract Ownable {
-    address private _owner;
-
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    /**
-     * @dev The Ownable constructor sets the original `owner` of the contract to the sender
-     * account.
-     */
-    constructor () internal {
-        _owner = msg.sender;
-        emit OwnershipTransferred(address(0), _owner);
+contract Ownable is WhitelistAdminRole {
+    function addOwnerDigest (address _newOwner) public view returns (bytes32) {
+        return keccak256(abi.encode("ao", address(this), _newOwner));
     }
 
-    /**
-     * @return the address of the owner.
-     */
-    function owner() public view returns (address) {
-        return _owner;
+    function removeOwnerDigest (address _owner) public view returns (bytes32) {
+        return keccak256(abi.encode("ro", address(this), _owner));
     }
 
-    /**
-     * @dev Throws if called by any account other than the owner.
-     */
-    modifier onlyOwner() {
-        require(isOwner());
-        _;
+    function isOwner (address _owner) public view returns (bool) {
+        return isWhitelistAdmin(_owner);
     }
 
-    /**
-     * @return true if `msg.sender` is the owner of the contract.
-     */
-    function isOwner() public view returns (bool) {
-        return msg.sender == _owner;
+    function addOwner (address _newOwner, bytes memory _signature) public {
+        bytes32 digest = ECDSA.toEthSignedMessageHash(addOwnerDigest(_newOwner));
+        address newOwner = ECDSA.recover(digest, _signature);
+        require(isOwner(newOwner), "addOwner: Should be signed by one of owners");
+        addWhitelistAdmin(_newOwner);
     }
 
-    /**
-     * @dev Allows the current owner to relinquish control of the contract.
-     * @notice Renouncing to ownership will leave the contract without an owner.
-     * It will not be possible to call the functions with the `onlyOwner`
-     * modifier anymore.
-     */
-    function renounceOwnership() public onlyOwner {
-        emit OwnershipTransferred(_owner, address(0));
-        _owner = address(0);
-    }
-
-    /**
-     * @dev Allows the current owner to transfer control of the contract to a newOwner.
-     * @param newOwner The address to transfer ownership to.
-     */
-    function transferOwnership(address newOwner) public onlyOwner {
-        _transferOwnership(newOwner);
-    }
-
-    /**
-     * @dev Transfers control of the contract to a newOwner.
-     * @param newOwner The address to transfer ownership to.
-     */
-    function _transferOwnership(address newOwner) internal {
-        require(newOwner != address(0));
-        emit OwnershipTransferred(_owner, newOwner);
-        _owner = newOwner;
+    function removeOwner (address _owner, bytes memory _signature) public {
+        bytes32 digest = ECDSA.toEthSignedMessageHash(removeOwnerDigest(_owner));
+        address owner = ECDSA.recover(digest, _signature);
+        require(isOwner(owner), "removeOwner: Should be signed by one of owners");
+        _removeWhitelistAdmin(_owner);
     }
 }

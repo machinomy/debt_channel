@@ -89,7 +89,9 @@ contract('Holding', accounts => {
     })
 
     specify('ok if signed by my delegate key', async () => {
-      await instanceA.addSigner(DELEGATE_ALICE, {from: ALICE})
+      const addSignerDigest = await instanceA.addSignerDigest(DELEGATE_ALICE)
+      const signatureAddSigner = await signature(ALICE, addSignerDigest)
+      await instanceA.addSigner(DELEGATE_ALICE, signatureAddSigner)
       const digest = await instanceA.addDebtDigest(instanceB.address, token.address, amount, 0)
       const signatureA = await signature(DELEGATE_ALICE, digest)
       const signatureB = await signature(BOB, digest)
@@ -104,7 +106,9 @@ contract('Holding', accounts => {
     })
 
     specify('ok if signed by others delegate key', async () => {
-      await instanceB.addSigner(DELEGATE_BOB, {from: BOB})
+      const addSignerDigest = await instanceB.addSignerDigest(DELEGATE_BOB)
+      const signatureAddSigner = await signature(BOB, addSignerDigest)
+      await instanceB.addSigner(DELEGATE_BOB, signatureAddSigner)
       const digest = await instanceA.addDebtDigest(instanceB.address, token.address, amount, 0)
       const signatureA = await signature(ALICE, digest)
       const signatureB = await signature(DELEGATE_BOB, digest)
@@ -365,6 +369,74 @@ contract('Holding', accounts => {
         await assert.isRejected(instanceA.removeOwner(ALIEN, signatureRemoveOwner)) // tslint:disable-line:await-promise
         const isOwnerAfterRemoving = await instanceA.isOwner(ALIEN)
         assert(isOwnerAfterRemoving)
+      })
+    })
+  })
+
+  describe('.signers', () => {
+    describe('.isSigner', () => {
+      specify('yes, it is signer', async () => {
+        const isOwner = await instanceA.isSigner(ALICE)
+        assert(isOwner)
+      })
+
+      specify('not an signer', async () => {
+        const isOwner = await instanceA.isOwner(BOB)
+        assert(!isOwner)
+      })
+    })
+
+    describe('.addSigner', () => {
+      specify('usual case', async () => {
+        const isSignerBefore = await instanceA.isSigner(ALIEN)
+        assert(!isSignerBefore)
+        const addSignerDigest = await instanceA.addSignerDigest(ALIEN)
+        const signatureAddSigner = await signature(ALICE, addSignerDigest)
+        await instanceA.addSigner(ALIEN, signatureAddSigner)
+        const isSignerAfter = await instanceA.isSigner(ALIEN)
+        assert(isSignerAfter)
+      })
+
+      specify('must fails when signature of new signer is wrong', async () => {
+        const isSignerBefore = await instanceA.isSigner(ALIEN)
+        assert(!isSignerBefore)
+        const addSignerDigest = await instanceA.addSignerDigest(ALIEN)
+        const signatureAddSigner = await signature(BOB, addSignerDigest)
+        await assert.isRejected(instanceA.addSigner(ALIEN, signatureAddSigner)) // tslint:disable-line:await-promise
+        const isSignerAfter = await instanceA.isSigner(ALIEN)
+        assert(!isSignerAfter)
+      })
+    })
+
+    describe('.removeSigner', () => {
+      specify('usual case', async () => {
+        const isSignerBefore = await instanceA.isSigner(ALIEN)
+        assert(!isSignerBefore)
+        const addSignerDigest = await instanceA.addSignerDigest(ALIEN)
+        const signatureAddSigner = await signature(ALICE, addSignerDigest)
+        await instanceA.addSigner(ALIEN, signatureAddSigner)
+        const isSignerAfter = await instanceA.isSigner(ALIEN)
+        assert(isSignerAfter)
+        const removeSignerDigest = await instanceA.removeSignerDigest(ALIEN)
+        const signatureRemoveSigner = await signature(ALICE, removeSignerDigest)
+        await instanceA.removeSigner(ALIEN, signatureRemoveSigner)
+        const isSignerAfterRemoving = await instanceA.isSigner(ALIEN)
+        assert(!isSignerAfterRemoving)
+      })
+
+      specify('must fails when signature of signer is wrong', async () => {
+        const isSingerBefore = await instanceA.isSigner(ALIEN)
+        assert(!isSingerBefore)
+        const addSignerDigest = await instanceA.addSignerDigest(ALIEN)
+        const signatureAddSigner = await signature(ALICE, addSignerDigest)
+        await instanceA.addSigner(ALIEN, signatureAddSigner)
+        const isSignerAfter = await instanceA.isSigner(ALIEN)
+        assert(isSignerAfter)
+        const removeSignerDigest = await instanceA.removeSignerDigest(ALIEN)
+        const signatureRemoveSigner = await signature(BOB, removeSignerDigest)
+        await assert.isRejected(instanceA.removeSigner(ALIEN, signatureRemoveSigner)) // tslint:disable-line:await-promise
+        const isSignerAfterRemoving = await instanceA.isSigner(ALIEN)
+        assert(isSignerAfterRemoving)
       })
     })
   })

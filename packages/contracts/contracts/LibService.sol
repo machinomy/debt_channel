@@ -1,7 +1,7 @@
 pragma solidity ^0.5.0;
 
-import "./vendor/SafeMath.sol";
-import "./vendor/ECDSA.sol";
+import "openzeppelin-solidity/contracts/math/SafeMath.sol";
+import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
 import "./LibBytes.sol";
 
 

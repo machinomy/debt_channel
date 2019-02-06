@@ -2,14 +2,13 @@ pragma solidity ^0.5.0;
 
 import "openzeppelin-solidity/contracts/token/ERC20/IERC20.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
-import "openzeppelin-solidity/contracts/ownership/Ownable.sol";
 import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
-import "openzeppelin-solidity/contracts/access/roles/WhitelistAdminRole.sol";
-import "openzeppelin-solidity/contracts/access/roles/SignerRole.sol";
+import "./vendor/Ownable.sol";
+import "./vendor/SignerRole.sol";
 
 
 /// @title Holding
-contract Holding is SignerRole, WhitelistAdminRole {
+contract Holding is SignerRole, Ownable {
     using SafeMath for uint256;
 
     enum State {
@@ -52,7 +51,7 @@ contract Holding is SignerRole, WhitelistAdminRole {
     /// @param owner Address of holding's owner.
     /// @param retiringPeriod How many time Holding resides in Retire state since retire() method called.
     /// @param clearingHouse Address of contract that available to clear debts.
-    constructor (address owner, uint256 retiringPeriod, address clearingHouse) public {
+    constructor (address owner, uint256 retiringPeriod, address clearingHouse) public SignerRole(this) Ownable() {
         _retiringPeriod = retiringPeriod;
         _retiringUntil = 0;
         _clearingHouse = clearingHouse;
@@ -243,14 +242,6 @@ contract Holding is SignerRole, WhitelistAdminRole {
         return keccak256(abi.encode("re", contractAddress));
     }
 
-    function addOwnerDigest (address _newOwner) public view returns (bytes32) {
-        return keccak256(abi.encode("ao", address(this), _newOwner));
-    }
-
-    function removeOwnerDigest (address _owner) public view returns (bytes32) {
-        return keccak256(abi.encode("ro", address(this), _owner));
-    }
-
     function addDebtDigest (
         address _destination,
         address _token,
@@ -263,23 +254,5 @@ contract Holding is SignerRole, WhitelistAdminRole {
 
     function debtIdentifier (address _destination, address _token, uint16 _salt) public view returns (bytes32) {
         return keccak256(abi.encode(address(this), _destination, _token, _salt));
-    }
-
-    function isOwner (address _owner) public view returns (bool) {
-        return isWhitelistAdmin(_owner);
-    }
-
-    function addOwner (address _newOwner, bytes memory _signature) public {
-        bytes32 digest = ECDSA.toEthSignedMessageHash(addOwnerDigest(_newOwner));
-        address newOwner = ECDSA.recover(digest, _signature);
-        require(isOwner(newOwner), "addOwner: Should be signed by one of owners");
-        addWhitelistAdmin(_newOwner);
-    }
-
-    function removeOwner (address _owner, bytes memory _signature) public {
-        bytes32 digest = ECDSA.toEthSignedMessageHash(removeOwnerDigest(_owner));
-        address owner = ECDSA.recover(digest, _signature);
-        require(isOwner(owner), "removeOwner: Should be signed by one of owners");
-        _removeWhitelistAdmin(_owner);
     }
 }

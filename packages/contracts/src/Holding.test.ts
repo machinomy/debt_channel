@@ -44,12 +44,12 @@ contract('Holding', accounts => {
     token = await Token.new()
     await token.mint(ALICE, 1000)
     await token.mint(BOB, 1000)
-    instanceA = await Holding.new(ALICE, 3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
-    instanceB = await Holding.new(BOB, 3, CLEARING_HOUSE_ADDRESS, { from: BOB })
+    instanceA = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
+    instanceB = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: BOB })
   })
 
   specify('constructor', async () => {
-    const holding = await Holding.new(ALICE, 3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
+    const holding = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
     const isOwner = await holding.isOwner(ALICE)
     assert(isOwner)
   })

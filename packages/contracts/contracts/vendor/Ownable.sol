@@ -3,11 +3,20 @@ pragma solidity ^0.5.0;
 import "openzeppelin-solidity/contracts/access/Roles.sol";
 import "openzeppelin-solidity/contracts/access/roles/WhitelistAdminRole.sol";
 import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
+import "../IOwnerRole.sol";
 
 /**
  * @title Ownable
  */
-contract Ownable is WhitelistAdminRole {
+contract OwnerRole is IOwnerRole {
+    using Roles for Roles.Role;
+
+    Roles.Role private _owners;
+
+    constructor () internal {
+        _owners.add(msg.sender);
+    }
+
     function addOwnerDigest (address _newOwner) public view returns (bytes32) {
         return keccak256(abi.encode("ao", address(this), _newOwner));
     }
@@ -16,21 +25,21 @@ contract Ownable is WhitelistAdminRole {
         return keccak256(abi.encode("ro", address(this), _owner));
     }
 
-    function isOwner (address _owner) public view returns (bool) {
-        return isWhitelistAdmin(_owner);
+    function isOwner (address _address) public view returns (bool) {
+        return _owners.has(_address);
     }
 
     function addOwner (address _newOwner, bytes memory _signature) public {
         bytes32 digest = ECDSA.toEthSignedMessageHash(addOwnerDigest(_newOwner));
         address newOwner = ECDSA.recover(digest, _signature);
         require(isOwner(newOwner), "addOwner: Should be signed by one of owners");
-        addWhitelistAdmin(_newOwner);
+        _owners.add(_newOwner);
     }
 
     function removeOwner (address _owner, bytes memory _signature) public {
         bytes32 digest = ECDSA.toEthSignedMessageHash(removeOwnerDigest(_owner));
         address owner = ECDSA.recover(digest, _signature);
         require(isOwner(owner), "removeOwner: Should be signed by one of owners");
-        _removeWhitelistAdmin(_owner);
+        _owners.remove(_owner);
     }
 }

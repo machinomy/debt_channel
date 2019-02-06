@@ -8,7 +8,7 @@ import "./vendor/SignerRole.sol";
 
 
 /// @title Holding
-contract Holding is SignerRole, Ownable {
+contract Holding is SignerRole, OwnerRole {
     using SafeMath for uint256;
 
     enum State {
@@ -48,10 +48,9 @@ contract Holding is SignerRole, Ownable {
     /*** ACTIONS AND CONSTRAINTS ***/
 
     /// @notice Constructs the new "Holding" contract.
-    /// @param owner Address of holding's owner.
     /// @param retiringPeriod How many time Holding resides in Retire state since retire() method called.
     /// @param clearingHouse Address of contract that available to clear debts.
-    constructor (address owner, uint256 retiringPeriod, address clearingHouse) public SignerRole(this) Ownable() {
+    constructor (uint256 retiringPeriod, address clearingHouse) public SignerRole(this) {
         _retiringPeriod = retiringPeriod;
         _retiringUntil = 0;
         _clearingHouse = clearingHouse;

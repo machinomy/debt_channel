@@ -64,3 +64,7 @@ export function printBufferArrayAs0xString (bufs: Buffer[]): void {
     console.log(bufferTo0xString(el))
   })
 }
+
+export function nullAddress (): string {
+  return util.addHexPrefix(''.padEnd(40, '0'))
+}

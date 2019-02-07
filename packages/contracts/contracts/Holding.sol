@@ -9,6 +9,7 @@ import "./vendor/SignerRole.sol";
 
 /// @title Holding
 contract Holding is SignerRole, OwnerRole {
+    using SafeMath for uint16;
     using SafeMath for uint256;
 
     enum State {
@@ -18,11 +19,11 @@ contract Holding is SignerRole, OwnerRole {
     }
 
     struct Debt {
-        address destination;     // Receiver address of debt
-        address token;           // Currency of debt
-        uint256 collectionAfter; // Creditor can claim debt after "collectionAfter" seconds
-        uint256 amount;          // Amount of debt
-        uint16  salt;            // ID of debt
+        address payable destination;     // Receiver address of debt
+        address token;                   // Currency of debt
+        uint256 collectionAfter;         // Creditor can claim debt after "collectionAfter" seconds
+        uint256 amount;                  // Amount of debt
+        uint16  salt;                    // ID of debt
     }
 
     State public _currentState;
@@ -56,6 +57,14 @@ contract Holding is SignerRole, OwnerRole {
         _clearingHouse = clearingHouse;
         _currentState = State.Active;
         _debtsSize = 0;
+    }
+
+    function () external payable {
+        if (balance[address(0x0)] == 0) {
+            _balanceSize = _balanceSize.add(1);
+        }
+
+        balance[address(0x0)] = balance[address(0x0)].add(msg.value);
     }
 
     /// @notice Get current contract lifecycle stage.
@@ -96,34 +105,47 @@ contract Holding is SignerRole, OwnerRole {
     }
 
     /// @notice Add deposit with value _amount in currency _token
-    /// @param _token Currency of deposit
+    /// @param _token Currency of deposit - token address or 0x0 for ETH
     /// @param _amount Value of deposit
-    function deposit (address _token, uint256 _amount) public {
-        IERC20 token = IERC20(_token);
-        require(token.transferFrom(msg.sender, address(this), _amount), "deposit: Unable to transfer token to the contract");
+    function deposit (address _token, uint256 _amount) public payable {
         if (balance[_token] == 0) {
-            _balanceSize += 1;
+            _balanceSize = _balanceSize.add(1);
         }
 
-        balance[_token] = balance[_token].add(_amount);
+        if (_token == address(0x0)) {
+            balance[_token] = balance[_token].add(msg.value);
+        } else {
+            IERC20 token = IERC20(_token);
+            require(token.transferFrom(msg.sender, address(this), _amount), "deposit: Unable to transfer token to the contract");
+            balance[_token] = balance[_token].add(_amount);
+        }
+
         emit DidDeposit(_token, _amount);
     }
 
     /// @notice Transfer _amount of _token to _destination address.
-    /// @param _destination Destination of tokens
-    /// @param _token Currency of withdraw
+    /// @param _destination Destination of tokens or ETH
+    /// @param _token Currency of withdraw - address for token, 0x0 for ETH
     /// @param _amount Value of withdraw
     /// @param _signature Signature of contract owner (debtor) of withdrawDigest
-    function withdraw (address _destination, address _token, uint256 _amount, bytes memory _signature) public {
+    function withdraw (address payable _destination, address _token, uint256 _amount, bytes memory _signature) public {
         require(_amount <= balance[_token], "withdraw: Trying to withdraw amount which exceeds current balance in specified token");
-        IERC20 token = IERC20(_token);
+
         bytes32 digest = ECDSA.toEthSignedMessageHash(withdrawDigest(_destination, _token, _amount));
         address recovered = ECDSA.recover(digest, _signature);
         require(isSigner(recovered), "withdraw: Should be signed");
-        require(token.transfer(_destination, _amount), "withdraw: Can not transfer token");
+
+        if (_token == address(0x0)) {
+            require(_destination.send(_amount), "withdraw: Can not transfer eth");
+        } else {
+            IERC20 token = IERC20(_token);
+            require(token.transfer(_destination, _amount), "withdraw: Can not transfer token");
+        }
+
         balance[_token] = balance[_token].sub(_amount);
+
         if (balance[_token] == 0) {
-            _balanceSize -= 1;
+            _balanceSize = _balanceSize.sub(1);
         }
 
         emit DidWithdraw(_destination, _token, _amount);
@@ -135,7 +157,7 @@ contract Holding is SignerRole, OwnerRole {
     function collectDebt (bytes32 _id, bytes memory _signature) public {
         Debt memory debt = debts[_id];
         require(debt.collectionAfter != 0, "collectDebt: Debt with specified ID does not found");
-        address destination = debt.destination;
+        address payable destination = debt.destination;
 
         address tokenContract = debt.token;
         Holding other = Holding(destination);
@@ -172,7 +194,7 @@ contract Holding is SignerRole, OwnerRole {
     /// @param _sigDebtor Signature of debtor
     /// @param _sigCreditor Signature of creditor
     function addDebt (
-        address _destination,
+        address payable _destination,
         address _token,
         uint256 _amount,
         uint16 _salt,
@@ -202,7 +224,7 @@ contract Holding is SignerRole, OwnerRole {
             salt: _salt
         });
 
-        _debtsSize += 1;
+        _debtsSize = _debtsSize.add(1);
 
         emit DidAddDebt(_destination, _token, _amount);
     }
@@ -212,7 +234,7 @@ contract Holding is SignerRole, OwnerRole {
     /// @param _signature Currency of creditor
     function forgiveDebt (bytes32 _id, bytes memory _signature) public {
         Debt memory debt = debts[_id];
-        address destination = debt.destination;
+        address payable destination = debt.destination;
         address tokenContract = debt.token;
         Holding other = Holding(destination);
         bytes32 digest = ECDSA.toEthSignedMessageHash(forgiveDigest(destination, tokenContract));
@@ -222,7 +244,7 @@ contract Holding is SignerRole, OwnerRole {
         emit DidForgive(destination, tokenContract, debt.amount);
 
         delete debts[_id];
-        _debtsSize -= 1;
+        _debtsSize -= _debtsSize.sub(1);
     }
 
     function forgiveDigest (address _destination, address _token) public pure returns (bytes32) {

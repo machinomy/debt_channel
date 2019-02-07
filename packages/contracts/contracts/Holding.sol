@@ -65,6 +65,8 @@ contract Holding is SignerRole, OwnerRole {
         }
 
         balance[address(0x0)] = balance[address(0x0)].add(msg.value);
+
+        emit DidDeposit(address(0x0), msg.value);
     }
 
     /// @notice Get current contract lifecycle stage.

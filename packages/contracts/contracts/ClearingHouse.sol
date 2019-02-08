@@ -2,7 +2,7 @@ pragma solidity ^0.5.0;
 
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
-import "./Holding.sol";
+import "./vendor/SignerRole.sol";
 
 
 /// @title Clearing House
@@ -19,12 +19,12 @@ contract ClearingHouse {
         bytes memory _sigA,
         bytes memory _sigB) public
     {
-        Holding holdingA = Holding(_partyA);
+        SignerRole holdingA = SignerRole(_partyA);
         bytes32 digestA = ECDSA.toEthSignedMessageHash(clearDigest(_partyA, _partyB, _idA, _idB));
         address recoveredA = ECDSA.recover(digestA, _sigA);
         require(holdingA.isSigner(recoveredA), "clear: Wrong signature party A");
 
-        Holding holdingB = Holding(_partyB);
+        SignerRole holdingB = SignerRole(_partyB);
         bytes32 digestB = ECDSA.toEthSignedMessageHash(clearDigest(_partyA, _partyB, _idA, _idB));
         address recoveredB = ECDSA.recover(digestB, _sigB);
         require(holdingB.isSigner(recoveredB), "clear: Wrong signature party B");

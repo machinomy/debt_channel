@@ -45,6 +45,7 @@ contract Holding is SignerRole, OwnerRole {
     event DidWithdraw(address indexed destination, address indexed token, uint256 amount);
     event DidForgive(address indexed destination, address indexed token, uint256 amount);
     event DidRemoveDebt(bytes32 _id);
+    event DidOnCollectDebt(address indexed _token, uint256 _amount, bytes32 _id);
     event DidRetired();
     event DidStop();
 
@@ -105,24 +106,24 @@ contract Holding is SignerRole, OwnerRole {
         emit DidStop();
 
         selfdestruct(address(msg.sender));
-
     }
 
     /// @notice Add deposit with value _amount in currency _token
     /// @param _token Currency of deposit - token address or 0x0 for ETH
     /// @param _amount Value of deposit
     function deposit (address _token, uint256 _amount) public payable {
+        if (_token == address(0x0)) {
+            require(msg.value == _amount, "deposit: msg.value and amount must be equal");
+        } else {
+            IERC20 token = IERC20(_token);
+            require(token.transferFrom(msg.sender, address(this), _amount), "deposit: Unable to transfer token to the contract");
+        }
+
         if (balance[_token] == 0) {
             _balanceSize = _balanceSize.add(1);
         }
 
-        if (_token == address(0x0)) {
-            balance[_token] = balance[_token].add(msg.value);
-        } else {
-            IERC20 token = IERC20(_token);
-            require(token.transferFrom(msg.sender, address(this), _amount), "deposit: Unable to transfer token to the contract");
-            balance[_token] = balance[_token].add(_amount);
-        }
+        balance[_token] = balance[_token].add(_amount);
 
         emit DidDeposit(_token, _amount);
     }
@@ -159,7 +160,7 @@ contract Holding is SignerRole, OwnerRole {
     /// @param _id ID of debt in debt mapping
     /// @param _signature Signature of debtor of collectDigest
     function collectDebt (bytes32 _id, bytes memory _signature) public {
-        Debt storage debt = debts[_id];
+        Debt memory debt = debts[_id];
         require(debt.collectionAfter != 0, "collectDebt: Debt with specified ID does not found");
         address payable destination = debt.destination;
 
@@ -169,24 +170,29 @@ contract Holding is SignerRole, OwnerRole {
         bytes32 digest = ECDSA.toEthSignedMessageHash(collectDigest(tokenContract));
         address recoveredOther = ECDSA.recover(digest, _signature);
 
-        require(other.isSigner(recoveredOther), "collectDebt: Should be signed by other");
+        require(other.isSigner(recoveredOther), "collectDebt: Should be signed by other or wrong source digest");
 
         require(debt.collectionAfter <= block.timestamp, "collectDebt: Can only collect existing stuff");
-        IERC20 token = IERC20(tokenContract);
+
         uint256 amountToSend;
         if (debt.amount > balance[tokenContract]) {
             amountToSend = balance[tokenContract];
         } else {
             amountToSend = debt.amount;
+            _clearingHouse.forgive(_id);
+            emit DidClose(destination, tokenContract, amountToSend);
         }
 
-        emit DidClose(destination, tokenContract, amountToSend);
-
-        debt.amount = debt.amount.sub(amountToSend);
+        debts[_id].amount = debt.amount.sub(amountToSend);
         balance[tokenContract] = balance[tokenContract].sub(amountToSend);
 
-        require(token.approve(destination, amountToSend), "collectDebt: Can not approve token transfer");
-        other.deposit(tokenContract, amountToSend);
+        if (tokenContract == address(0x0)) {
+            other.onCollectDebt.value(amountToSend)(tokenContract, amountToSend, _id);
+        } else {
+            IERC20 token = IERC20(tokenContract);
+            require(token.approve(destination, amountToSend), "collectDebt: Can not approve token transfer");
+            other.onCollectDebt(tokenContract, amountToSend, _id);
+        }
 
         emit DidCollect(destination, tokenContract, balance[tokenContract]);
     }
@@ -257,7 +263,7 @@ contract Holding is SignerRole, OwnerRole {
 
     /// @notice Remove a debt.
     /// @param _id ID of debt.
-    function removeDebt(bytes32 _id) public {
+    function removeDebt (bytes32 _id) public {
         bool isCleared = _clearingHouse.isCleared(address(this), _id);
         bool isFullyRepaid = debts[_id].amount == 0;
 
@@ -297,5 +303,16 @@ contract Holding is SignerRole, OwnerRole {
 
     function debtIdentifier (address _destination, address _token, uint16 _salt) public view returns (bytes32) {
         return keccak256(abi.encode(address(this), _destination, _token, _salt));
+    }
+
+
+    function onCollectDebt (address _token, uint256 _amount, bytes32 _id) external payable {
+        if (_token == address(0x0)) {
+            require(msg.value == _amount, "onCollectDebt: msg.value and amount must be equal for ETH");
+        }
+
+        deposit(_token, _amount);
+
+        emit DidOnCollectDebt(_token, _amount, _id);
     }
 }

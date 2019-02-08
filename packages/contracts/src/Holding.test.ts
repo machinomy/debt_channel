@@ -91,11 +91,11 @@ contract('Holding', accounts => {
       assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.0')
 
       await instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
-        new BigNumber(ethers.utils.parseEther('0.1').toString()),
-        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.1').toString() })
+        new BigNumber(ethers.utils.parseEther('0.01').toString()),
+        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.01').toString() })
 
       const holdingBalanceAfter = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
-      assert.equal(ethers.utils.formatEther(holdingBalanceAfter.toString()).toString(), '0.1')
+      assert.equal(ethers.utils.formatEther(holdingBalanceAfter.toString()).toString(), '0.01')
     })
 
     specify('eth: must fails when user wants to deposit too much', async () => {
@@ -104,7 +104,7 @@ contract('Holding', accounts => {
       assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.0')
 
       await assert.isRejected(instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
-        new BigNumber(ethers.utils.parseEther('0.1').toString()),
+        new BigNumber(ethers.utils.parseEther('0.01').toString()),
         { from: ALICE, to: instanceA.address, value: new BigNumber(aliceBalance).add(1).toString() })) // tslint:disable-line:await-promise
 
       const holdingBalanceAfter = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
@@ -202,7 +202,7 @@ contract('Holding', accounts => {
     const amount = 10
     const settlementPeriod = 0
 
-    specify('usual case', async () => {
+    specify('tokens: usual case', async () => {
       await token.approve(instanceA.address, 1000, {from: ALICE})
       await instanceA.deposit(token.address, 10, {from: ALICE})
       const digest = await instanceA.addDebtDigest(instanceB.address, token.address, amount, 0)
@@ -219,13 +219,38 @@ contract('Holding', accounts => {
       let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
       assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
       assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
-      assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
+      assert(contracts.Holding.isDidOnCollectDebtEvent(tx.logs[2]))
+      assert(contracts.Holding.isDidCollectEvent(tx.logs[3]))
       const balanceAfter = await token.balanceOf(instanceB.address)
-
       assert.equal(balanceAfter.sub(balanceBefore).toString(), amount.toString())
 
       const holdingAfter = await instanceB.balance(token.address)
       assert.equal(holdingAfter.sub(holdingBefore).toString(), amount.toString())
+    })
+
+    specify('eth: usual case', async () => {
+      const value = ethers.utils.parseEther('0.01').toString()
+
+      await instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
+        new BigNumber(ethers.utils.parseEther('0.01').toString()),
+        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.01').toString() })
+
+      const holdingBalanceBefore = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
+      assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.01')
+
+      const digest = await instanceA.addDebtDigest(instanceB.address, ETH_AS_TOKEN_ADDRESS, new BigNumber(value), 0)
+      const signatureA = await signature(ALICE, digest)
+      const signatureB = await signature(BOB, digest)
+      const salt = 0x125
+      await instanceA.addDebt(instanceB.address, ETH_AS_TOKEN_ADDRESS, new BigNumber(value), salt, settlementPeriod, signatureA, signatureB)
+      const collectDigest = await instanceA.collectDigest(ETH_AS_TOKEN_ADDRESS)
+      const collectSignature = await signature(BOB, collectDigest)
+      const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, ETH_AS_TOKEN_ADDRESS, salt)
+      await instanceA.collectDebt(debtIdentifierResult, collectSignature)
+      const holdingBalanceAfter = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
+      assert.equal(holdingBalanceAfter.sub(holdingBalanceBefore).toString(),
+        (new BigNumber(value).mul(-1)).toString(),
+        'Subtract of holding balances must be equal to -value')
     })
   })
 
@@ -289,13 +314,13 @@ contract('Holding', accounts => {
 
     specify('eth: usual case', async () => {
       await instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
-        new BigNumber(ethers.utils.parseEther('0.1').toString()),
-        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.1').toString() })
+        new BigNumber(ethers.utils.parseEther('0.01').toString()),
+        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.01').toString() })
 
       const holdingBalanceBefore = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
-      assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.1')
+      assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.01')
 
-      const withdrawal = new BigNumber(ethers.utils.parseEther('0.1').toString())
+      const withdrawal = new BigNumber(ethers.utils.parseEther('0.01').toString())
       const digest = await instanceA.withdrawDigest(BOB, ETH_AS_TOKEN_ADDRESS, withdrawal)
       const signatureA = await signature(ALICE, digest)
       const balanceBefore = await ethProvider.getBalance(BOB)
@@ -311,7 +336,7 @@ contract('Holding', accounts => {
     })
 
     specify('eth: must fails when user wants to withdraw too much', async () => {
-      const depositValue = '0.1'
+      const depositValue = '0.01'
       await instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
         new BigNumber(ethers.utils.parseEther(depositValue).toString()),
         { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther(depositValue).toString() })
@@ -336,13 +361,13 @@ contract('Holding', accounts => {
 
     specify('eth: must fails when signature is wrong', async () => {
       await instanceA.deposit(ETH_AS_TOKEN_ADDRESS,
-        new BigNumber(ethers.utils.parseEther('0.1').toString()),
-        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.1').toString() })
+        new BigNumber(ethers.utils.parseEther('0.01').toString()),
+        { from: ALICE, to: instanceA.address, value: ethers.utils.parseEther('0.01').toString() })
 
       const holdingBalanceBefore = await instanceA.balance(ETH_AS_TOKEN_ADDRESS)
-      assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.1')
+      assert.equal(ethers.utils.formatEther(holdingBalanceBefore.toString()).toString(), '0.01')
 
-      const withdrawal = new BigNumber(ethers.utils.parseEther('0.1').toString())
+      const withdrawal = new BigNumber(ethers.utils.parseEther('0.01').toString())
       const digest = await instanceA.withdrawDigest(BOB, ETH_AS_TOKEN_ADDRESS, withdrawal)
       const signatureA = await signature(DELEGATE_ALICE, digest)
       const balanceBefore = await ethProvider.getBalance(BOB)
@@ -622,7 +647,8 @@ contract('Holding', accounts => {
       let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
       assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
       assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
-      assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
+      assert(contracts.Holding.isDidOnCollectDebtEvent(tx.logs[2]))
+      assert(contracts.Holding.isDidCollectEvent(tx.logs[3]))
       const balanceAfter = await token.balanceOf(instanceB.address)
 
       assert.equal(balanceAfter.sub(balanceBefore).toString(), amount.toString())
@@ -680,8 +706,8 @@ contract('Holding', accounts => {
       const holdingBefore = await instanceB.balance(token.address)
       const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, token.address, salt)
       let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
-      assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
-      assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
+      assert(contracts.Holding.isDidDepositEvent(tx.logs[0]))
+      assert(contracts.Holding.isDidOnCollectDebtEvent(tx.logs[1]))
       assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
       const balanceAfter = await token.balanceOf(instanceB.address)
 

@@ -600,4 +600,96 @@ contract('Holding', accounts => {
       })
     })
   })
+
+  describe('.removeDebt', () => {
+    const amount = 1000
+    const settlementPeriod = 0
+
+    specify('usual case', async () => {
+      await token.approve(instanceA.address, amount, {from: ALICE})
+      await instanceA.deposit(token.address, amount, {from: ALICE})
+      const digest = await instanceA.addDebtDigest(instanceB.address, token.address, amount, settlementPeriod)
+      const signatureA = await signature(ALICE, digest)
+      const signatureB = await signature(BOB, digest)
+      const salt = 0x125
+      await instanceA.addDebt(instanceB.address, token.address, amount, salt, settlementPeriod, signatureA, signatureB)
+      const collectDigest = await instanceA.collectDigest(token.address)
+      const collectSignature = await signature(BOB, collectDigest)
+
+      const balanceBefore = await token.balanceOf(instanceB.address)
+      const holdingBefore = await instanceB.balance(token.address)
+      const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, token.address, salt)
+      let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
+      assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
+      assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
+      assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
+      const balanceAfter = await token.balanceOf(instanceB.address)
+
+      assert.equal(balanceAfter.sub(balanceBefore).toString(), amount.toString())
+      const holdingAfter = await instanceB.balance(token.address)
+      assert.equal(holdingAfter.sub(holdingBefore).toString(), amount.toString())
+
+      const tx2 = await instanceA.removeDebt(debtIdentifierResult)
+      assert(contracts.Holding.isDidRemoveDebtEvent(tx2.logs[0]))
+    })
+
+    specify('must fails when debt id does not exists', async () => {
+      const amount = 100
+      await token.approve(instanceA.address, 1000, { from: ALICE })
+      await instanceA.deposit(token.address, amount, { from: ALICE })
+
+      const digestAddDebt = await instanceA.addDebtDigest(instanceB.address, token.address, amount, 0)
+      const signatureAAddDebt = await signature(ALICE, digestAddDebt)
+      const signatureBAddDebt = await signature(BOB, digestAddDebt)
+      const salt = 0x125
+      await instanceA.addDebt(instanceB.address, token.address, amount, salt, 0, signatureAAddDebt, signatureBAddDebt)
+
+      const tokenBalance = await token.balanceOf(instanceA.address)
+      assert.equal(tokenBalance.toString(), '100')
+      const holdingBalance = await instanceA.balance(token.address)
+      assert.equal(holdingBalance.toString(), '100')
+
+      const digest = await instanceA.forgiveDigest(instanceB.address, token.address)
+      const signatureB = await signature(BOB, digest)
+      const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, token.address, salt)
+      await instanceA.forgiveDebt(debtIdentifierResult, signatureB)
+      const rawDebt = await instanceA.debts(debtIdentifierResult)
+      const debt = Debt.fromContract(rawDebt)
+      assert.equal(debt.amount.toString(), '0')
+      assert.equal(debt.collectionAfter.toString(), '0')
+
+      const isCleared = await instanceClearingHouse.isCleared(instanceA.address, debtIdentifierResult)
+
+      assert.equal(isCleared, true)
+
+      await assert.isRejected(instanceA.removeDebt(debtIdentifierResult)) // tslint:disable-line:await-promise
+    })
+
+    specify('must fails if debt is not cleared or fully repaid', async () => {
+      await token.approve(instanceA.address, amount, {from: ALICE})
+      await instanceA.deposit(token.address, amount, {from: ALICE})
+      const digest = await instanceA.addDebtDigest(instanceB.address, token.address, amount + 1, settlementPeriod)
+      const signatureA = await signature(ALICE, digest)
+      const signatureB = await signature(BOB, digest)
+      const salt = 0x125
+      await instanceA.addDebt(instanceB.address, token.address, amount + 1, salt, settlementPeriod, signatureA, signatureB)
+      const collectDigest = await instanceA.collectDigest(token.address)
+      const collectSignature = await signature(BOB, collectDigest)
+
+      const balanceBefore = await token.balanceOf(instanceB.address)
+      const holdingBefore = await instanceB.balance(token.address)
+      const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, token.address, salt)
+      let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
+      assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
+      assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
+      assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
+      const balanceAfter = await token.balanceOf(instanceB.address)
+
+      assert.equal(balanceAfter.sub(balanceBefore).toString(), amount.toString())
+      const holdingAfter = await instanceB.balance(token.address)
+      assert.equal(holdingAfter.sub(holdingBefore).toString(), amount.toString())
+
+      await assert.isRejected(instanceA.removeDebt(debtIdentifierResult)) // tslint:disable-line:await-promise
+    })
+  })
 })

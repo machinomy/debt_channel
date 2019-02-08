@@ -44,6 +44,7 @@ contract Holding is SignerRole, OwnerRole {
     event DidClose(address indexed destination, address indexed token, uint256 amount);
     event DidWithdraw(address indexed destination, address indexed token, uint256 amount);
     event DidForgive(address indexed destination, address indexed token, uint256 amount);
+    event DidRemoveDebt(bytes32 _id);
     event DidRetired();
     event DidStop();
 
@@ -158,7 +159,7 @@ contract Holding is SignerRole, OwnerRole {
     /// @param _id ID of debt in debt mapping
     /// @param _signature Signature of debtor of collectDigest
     function collectDebt (bytes32 _id, bytes memory _signature) public {
-        Debt memory debt = debts[_id];
+        Debt storage debt = debts[_id];
         require(debt.collectionAfter != 0, "collectDebt: Debt with specified ID does not found");
         address payable destination = debt.destination;
 
@@ -177,8 +178,9 @@ contract Holding is SignerRole, OwnerRole {
             amountToSend = balance[tokenContract];
         } else {
             amountToSend = debt.amount;
-            emit DidClose(destination, tokenContract, amountToSend);
         }
+
+        emit DidClose(destination, tokenContract, amountToSend);
 
         debt.amount = debt.amount.sub(amountToSend);
         balance[tokenContract] = balance[tokenContract].sub(amountToSend);
@@ -251,6 +253,20 @@ contract Holding is SignerRole, OwnerRole {
         _clearingHouse.forgive(_id);
 
         emit DidForgive(destination, tokenContract, debt.amount);
+    }
+
+    /// @notice Remove a debt.
+    /// @param _id ID of debt.
+    function removeDebt(bytes32 _id) public {
+        bool isCleared = _clearingHouse.isCleared(address(this), _id);
+        bool isFullyRepaid = debts[_id].amount == 0;
+
+        require(debts[_id].collectionAfter != 0, "removeDebt: Debt with _id does not exists");
+        require(isCleared || isFullyRepaid, "removeDebt: Removed debt must be cleared in ClearingHouse OR fully repaid");
+
+        delete debts[_id];
+
+        emit DidRemoveDebt(_id);
     }
 
     function forgiveDigest (address _destination, address _token) public pure returns (bytes32) {

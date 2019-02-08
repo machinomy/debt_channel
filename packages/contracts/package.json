@@ -10,7 +10,7 @@
   ],
   "config": {
     "truffleTests": "dist/*.test.js",
-    "wrappedArtifacts": "build/contracts/@(Holding|TestToken).json"
+    "wrappedArtifacts": "build/contracts/@(Holding|ClearingHouse|TestToken).json"
   },
   "scripts": {
     "build": "yarn support:wrap && tsc --project tsconfig.json && tsc --project tsconfig.migrations.json",

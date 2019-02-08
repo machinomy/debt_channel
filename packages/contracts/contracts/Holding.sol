@@ -5,6 +5,7 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/cryptography/ECDSA.sol";
 import "./vendor/Ownable.sol";
 import "./vendor/SignerRole.sol";
+import "./ClearingHouse.sol";
 
 
 /// @title Holding
@@ -27,7 +28,7 @@ contract Holding is SignerRole, OwnerRole {
     }
 
     State public _currentState;
-    address public _clearingHouse;
+    ClearingHouse public _clearingHouse;
     uint256 public _retiringPeriod;
     uint256 public _retiringUntil;
     uint256 public _debtsSize;
@@ -51,7 +52,7 @@ contract Holding is SignerRole, OwnerRole {
     /// @notice Constructs the new "Holding" contract.
     /// @param retiringPeriod How many time Holding resides in Retire state since retire() method called.
     /// @param clearingHouse Address of contract that available to clear debts.
-    constructor (uint256 retiringPeriod, address clearingHouse) public SignerRole(this) {
+    constructor (uint256 retiringPeriod, ClearingHouse clearingHouse) public SignerRole(this) {
         _retiringPeriod = retiringPeriod;
         _retiringUntil = 0;
         _clearingHouse = clearingHouse;
@@ -181,10 +182,11 @@ contract Holding is SignerRole, OwnerRole {
 
         debt.amount = debt.amount.sub(amountToSend);
         balance[tokenContract] = balance[tokenContract].sub(amountToSend);
-        emit DidCollect(destination, tokenContract, balance[tokenContract]);
 
         require(token.approve(destination, amountToSend), "collectDebt: Can not approve token transfer");
         other.deposit(tokenContract, amountToSend);
+
+        emit DidCollect(destination, tokenContract, balance[tokenContract]);
     }
 
     /// @notice Add debt to contract
@@ -243,10 +245,12 @@ contract Holding is SignerRole, OwnerRole {
         address recoveredOther = ECDSA.recover(digest, _signature);
         require(other.isSigner(recoveredOther), "forgiveDebt: Should be signed by other");
 
-        emit DidForgive(destination, tokenContract, debt.amount);
-
         delete debts[_id];
         _debtsSize -= _debtsSize.sub(1);
+
+        _clearingHouse.forgive(_id);
+
+        emit DidForgive(destination, tokenContract, debt.amount);
     }
 
     function forgiveDigest (address _destination, address _token) public pure returns (bytes32) {

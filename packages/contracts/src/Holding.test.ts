@@ -14,6 +14,7 @@ chai.use(asPromised)
 const web3 = (global as any).web3 as Web3
 const assert = chai.assert
 
+const ClearingHouse = artifacts.require<contracts.ClearingHouse.Contract>('ClearingHouse.sol')
 const Holding = artifacts.require<contracts.Holding.Contract>('Holding.sol')
 const Token = artifacts.require<TestToken.Contract>('support/TestToken.sol')
 
@@ -33,7 +34,6 @@ contract('Holding', accounts => {
   const BOB = accounts[1]
   const DELEGATE_ALICE = accounts[2]
   const DELEGATE_BOB = accounts[3]
-  const CLEARING_HOUSE_ADDRESS = accounts[4]
   const ALIEN = accounts[5]
 
   const ETH_AS_TOKEN_ADDRESS = solUtils.nullAddress()
@@ -45,18 +45,20 @@ contract('Holding', accounts => {
 
   let instanceA: contracts.Holding.Contract
   let instanceB: contracts.Holding.Contract
+  let instanceClearingHouse: contracts.ClearingHouse.Contract
   let token: TestToken.Contract
 
   beforeEach(async () => {
     token = await Token.new()
     await token.mint(ALICE, 1000)
     await token.mint(BOB, 1000)
-    instanceA = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
-    instanceB = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: BOB })
+    instanceClearingHouse = await ClearingHouse.new()
+    instanceA = await Holding.new(3, instanceClearingHouse.address, { from: ALICE })
+    instanceB = await Holding.new(3, instanceClearingHouse.address, { from: BOB })
   })
 
   specify('constructor', async () => {
-    const holding = await Holding.new(3, CLEARING_HOUSE_ADDRESS, { from: ALICE })
+    const holding = await Holding.new(3, instanceClearingHouse.address, { from: ALICE })
     const isOwner = await holding.isOwner(ALICE)
     assert(isOwner)
   })
@@ -216,7 +218,8 @@ contract('Holding', accounts => {
       const debtIdentifierResult = await instanceA.debtIdentifier.call(instanceB.address, token.address, salt)
       let tx = await instanceA.collectDebt(debtIdentifierResult, collectSignature)
       assert(contracts.Holding.isDidCloseEvent(tx.logs[0]))
-      assert(contracts.Holding.isDidCollectEvent(tx.logs[1]))
+      assert(contracts.Holding.isDidDepositEvent(tx.logs[1]))
+      assert(contracts.Holding.isDidCollectEvent(tx.logs[2]))
       const balanceAfter = await token.balanceOf(instanceB.address)
 
       assert.equal(balanceAfter.sub(balanceBefore).toString(), amount.toString())
